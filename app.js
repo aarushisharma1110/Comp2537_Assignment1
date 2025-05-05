@@ -46,14 +46,22 @@ app.use(session({
 
 app.get('/', (req, res) => {
   if (!req.session.authenticated) {
-    res.send(
-      `<a href="/signup"><button>Sign up</button></a><br/>` + 
-      `<a href="/login"><button>Log in</button></a>`
-    );
-  }
-  else {
-    res.redirect(`/members`);
-  };
+    var html = `
+    <button><a href="/signup">Sign Up</a></button>
+    <br><br>
+    <button><a href="/login">Log In</a></button>
+    `;
+}
+else {
+    var name = req.session.name;
+    var html = `
+    <h1>Hello, ${name}</h1>
+    <button><a href="/members">Go to Members Area</a></button>
+    <br>
+    <button><a href="/logout">Logout</a></button> 
+    `;
+}
+res.send(html);
 });
 
 app.get('/signup', (req, res) => {
@@ -82,22 +90,11 @@ app.post('/signupSubmit', async (req, res) => {
   const validationResult = schema.validate({name, email, pw});
 
   if (validationResult.error != null) {
-    if (!name) {
-      res.send(
-        `<p>Name is required.</p><br/><a href="/signup">Try again</a>`
-      );
-    }
-    else if (!email) {
-      res.send(
-        `<p>Email is required.</p><br/><a href="/signup">Try again</a>`
-      );
-    }
-    else if (!pw) {
-      res.send(
-        `<p>Password is required.</p><br/><a href="/signup">Try again</a>`
-      );
-    }
-  }
+    res.send(
+        `<p>${validationResult.error.details[0].message}</p><br/><a href="/signup">Try again</a>`
+    );
+    return;
+}
 
   var hashedPw = await bcrypt.hash(pw, saltRounds);
   await userCollection.insertOne({username: name, email: email, password: hashedPw});
@@ -111,7 +108,7 @@ app.post('/signupSubmit', async (req, res) => {
 
 app.get('/login', (req, res) => {
   res.send(
-    `<p>log in</p>` + 
+    `<p>Log in</p>` + 
     `<form method="post" action="/loginSubmit">` +
     `<input type="text" placeholder="email" name="email" required/><br/>` +
     `<input type="password" placeholder="password" name="password" required/><br/>` +
@@ -125,37 +122,42 @@ app.post('/loginSubmit', async (req, res) => {
   var pw = req.body.password;
 
   const schema = Joi.object({
-    email:  Joi.string().email({minDomainSegments: 2, tlds: { allow: ['com', 'org', 'net']}}).required(),
-    pw:     Joi.string().max(20).required()
+      email: Joi.string().email({minDomainSegments: 2, tlds: { allow: ['com', 'org', 'net']}}).required(),
+      pw: Joi.string().max(20).required()
   });
+  
   const validationResult = schema.validate({email, pw});
   if (validationResult.error != null) {
-    console.log(validationResult.error);
-    res.redirect("/login");
-    return;
+      res.send(
+          `<p>${validationResult.error.details[0].message}</p><br/><a href="/login">Try again</a>`
+      );
+      return;
   }
 
   const result = await userCollection.find({email: email}).project({username: 1, password: 1, _id: 1}).toArray();
 
-	if (result.length != 1) {
-		res.send(
-      `<p>That email was not found.</p>` +
-      `<a href="/login">Try again</a>`
-    );
-	}
-	if (await bcrypt.compare(pw, result[0].password)) {
-		req.session.authenticated = true;
-		req.session.name = result[0].username;
-		req.session.cookie.maxAge = expireTime;
-		res.redirect('/members');
-		return;
-	}
-	else {
-		res.send(
-      `<p>That password is incorrect.</p>` +
-      `<a href="/login">Try again</a>`
-    );
-	}
+  if (result.length != 1) {
+      res.send(
+          `<p>Invalid email/password combination.</p>` +
+          `<a href="/login">Try again</a>`
+      );
+      return;
+  }
+  
+  if (await bcrypt.compare(pw, result[0].password)) {
+      req.session.authenticated = true;
+      req.session.name = result[0].username;
+      req.session.cookie.maxAge = expireTime;
+      res.redirect('/members');
+      return;
+  }
+  else {
+      res.send(
+          `<p>Invalid email/password combination.</p>` +
+          `<a href="/login">Try again</a>`
+      );
+      return;
+  }
 });
 
 app.get('/members', (req, res) => {
@@ -163,7 +165,7 @@ app.get('/members', (req, res) => {
     var rnd = Math.floor(Math.random() * 3) + 1;
     var html =
       `<h1>Hello, ${req.session.name}!</h1><br/><br/>` +
-      `<img src="/${rnd.toString()}.jpg"><br/>` +
+      `<img src="/${rnd.toString()}.jpg" style="width: 300px; height: auto;"><br/>`+
       `<a href="/logout"><button>Sign out</button></a>`
 
     res.send(html);
